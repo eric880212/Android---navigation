@@ -36,6 +36,8 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.location.LocationManager;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
@@ -52,6 +54,7 @@ import android.widget.Button;
 import android.widget.EditText;
 
 import com.google.android.gms.maps.UiSettings;
+import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
 //speech import
 import android.speech.tts.TextToSpeech;
@@ -62,9 +65,14 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.Address;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintWriter;
 import java.net.HttpURLConnection;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.security.SignatureException;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -102,6 +110,8 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
     private Button speedtest,end_direction;
     private TextToSpeech tts;
     private LinearLayout layout;
+    private Polyline polyline;
+
 //    private Location location;
 
     LatLng Taiwan = new LatLng(25.02, 121.32);
@@ -142,12 +152,14 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         Button accidentB = findViewById(R.id.accident);
         layout = (LinearLayout)findViewById(R.id.linearlayout);
         end_direction = findViewById(R.id.end_direction);
+
         end_direction.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                is_direction = false;
                 layout.setVisibility(View.VISIBLE);
                 end_direction.setVisibility(View.GONE);
-                mMap.clear();
+                polyline.remove();
             }
         });
 
@@ -161,6 +173,8 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         assert mSensorManager != null;
         Sensor mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        //Thread mythread = new Thread(new MyServer());
+        //mythread.start();
     }
 
     /**
@@ -200,6 +214,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         mMap.getUiSettings().setZoomGesturesEnabled(true);
         mMap.getUiSettings().setTiltGesturesEnabled(true);
         mMap.getUiSettings().setRotateGesturesEnabled(true);
+
     }
 
     @Override
@@ -251,8 +266,12 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
 
         //若體感(Sensor)甩動速度大於等於甩動設定值則進入 (達到甩動力道及速度)
         if (mSpeed >= SPEED_SHRESHOLD) {
-            //達到搖一搖甩動後要做的事
             tts.speak("震動注意", TextToSpeech.QUEUE_FLUSH, null);//發音
+            //達到搖一搖甩動後要做的事
+            client b = new client();
+            String location_Now = String.valueOf((double) location.getLatitude()) + "," + String.valueOf((double)location.getLongitude());
+
+            b.execute(location_Now);
         }
 
     }
@@ -372,11 +391,10 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
 
 
     public void ButtonClick(View view) {
-
+        showLocation(mMap,location);
         if (mMap == null) {
             return;
         }
-        mMap.clear();
         final Dialog dialog = ProgressDialog.show(this, "計算路徑", "計算中");
         new Handler().postDelayed(new Runnable() {
             @Override
@@ -388,7 +406,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         String dest = address_dest.getText().toString();
         String location_Now = String.valueOf((double) location.getLatitude()) + "," + String.valueOf((double)location.getLongitude());
         if(origin.equals("現在位置")){
-           origin = location_Now;
+            origin = location_Now;
         }
         String url = getDirectionsUrl(origin, dest);
 
@@ -411,99 +429,99 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
             for(int i=0;i<18;i++)Accident.get(i).setVisible(false);
     }
 
-     public void SpeedClick(View view){
-         if(Photo.get(0).isVisible()==false){
-             for(int i=0;i<113;i++)Photo.get(i).setVisible(true);
-         }
-         else
-             for(int i=0;i<113;i++)Photo.get(i).setVisible(false);
-     }
+    public void SpeedClick(View view){
+        if(Photo.get(0).isVisible()==false){
+            for(int i=0;i<113;i++)Photo.get(i).setVisible(true);
+        }
+        else
+            for(int i=0;i<113;i++)Photo.get(i).setVisible(false);
+    }
 
-     @RequiresApi(api = Build.VERSION_CODES.N)
-     public void SituationClick(View view) {
-         for(int i=0;i<4;i++){
-             StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
-             StrictMode.setThreadPolicy(policy);
-             HttpURLConnection connection = null;
-             String APIUrl =
-                     "https://traffic.transportdata.tw/MOTC/v1/Road/Traffic/Road/Taoyuan?$filter=RouteID%20eq%20'68000L21432'&$top=30&$format=JSON";
-             // 申請的APPID
-             // （FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF 為 Guest
-             // 帳號，以IP作為API呼叫限制，請替換為註冊的APPID & APPKey）
-             String APPID = "MQA4ADYANQBmAGYAMwAwAC0AOAA5ADYAMgAtADQAYwBmADgALQBiADUAOQA0AC0ANABkADMAMQBlAGMAOQBiAGIAMAA4AGEA";
-             // 申請的APPKey
-             String APPKey = "ZgBmADUAZABhADEAZAA2AC0ANgA2ADQAMgAtADQAYwBmADkALQBiAGEAOABhAC0AOAAwAGMAMABhAGQAYgBlAGMANgAxADYA";
+    @RequiresApi(api = Build.VERSION_CODES.N)
+    public void SituationClick(View view) {
+        for(int i=0;i<4;i++){
+            StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
+            StrictMode.setThreadPolicy(policy);
+            HttpURLConnection connection = null;
+            String APIUrl =
+                    "https://traffic.transportdata.tw/MOTC/v1/Road/Traffic/Road/Taoyuan?$filter=RouteID%20eq%20'68000L21432'&$top=30&$format=JSON";
+            // 申請的APPID
+            // （FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF 為 Guest
+            // 帳號，以IP作為API呼叫限制，請替換為註冊的APPID & APPKey）
+            String APPID = "MQA4ADYANQBmAGYAMwAwAC0AOAA5ADYAMgAtADQAYwBmADgALQBiADUAOQA0AC0ANABkADMAMQBlAGMAOQBiAGIAMAA4AGEA";
+            // 申請的APPKey
+            String APPKey = "ZgBmADUAZABhADEAZAA2AC0ANgA2ADQAMgAtADQAYwBmADkALQBiAGEAOABhAC0AOAAwAGMAMABhAGQAYgBlAGMANgAxADYA";
 
-             // 取得當下的UTC時間，Java8有提供時間格式DateTimeFormatter.RFC_1123_DATE_TIME
-             // 但是格式與C#有一點不同，所以只能自行定義
-             String xdate = getServerTime();
-             System.out.println("中文"+xdate);
-             String SignDate = "x-date: " + xdate;
-             String respond = "";
-             boolean isgzip = true;
+            // 取得當下的UTC時間，Java8有提供時間格式DateTimeFormatter.RFC_1123_DATE_TIME
+            // 但是格式與C#有一點不同，所以只能自行定義
+            String xdate = getServerTime();
+            System.out.println("中文"+xdate);
+            String SignDate = "x-date: " + xdate;
+            String respond = "";
+            boolean isgzip = true;
 
-             String Signature = "";
-             try {
-                 // 取得加密簽章
-                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                     Signature = HMAC_SHA1.Signature(SignDate, APPKey);
-                 }
-             } catch (    SignatureException e1) {
-                 // TODO Auto-generated catch block
-                 e1.printStackTrace();
-             }
+            String Signature = "";
+            try {
+                // 取得加密簽章
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    Signature = HMAC_SHA1.Signature(SignDate, APPKey);
+                }
+            } catch (    SignatureException e1) {
+                // TODO Auto-generated catch block
+                e1.printStackTrace();
+            }
 
-             System.out.println("Signature :" + Signature);
-             String sAuth = "hmac username=\"" + APPID + "\", algorithm=\"hmac-sha1\", headers=\"x-date\", signature=\""
-                     + Signature + "\"";
-             System.out.println(sAuth);
-             try {
-                 URL url = new URL(APIUrl);
-                 if ("https".equalsIgnoreCase(url.getProtocol())) {
-                     SslUtils.ignoreSsl();
-                 }
-                 connection = (HttpURLConnection) url.openConnection();
-                 //connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 6.2; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.87 Safari/537.36");
-                 connection.setRequestMethod("GET");
-                 connection.setRequestProperty("Authorization", sAuth);
-                 connection.setRequestProperty("x-date", xdate);
-                 connection.setRequestProperty("Accept-Encoding", "gzip");
-                 connection.setRequestProperty("Content-Type", "application/json ; charset=utf-8");
-                 connection.setDoInput(true);
+            System.out.println("Signature :" + Signature);
+            String sAuth = "hmac username=\"" + APPID + "\", algorithm=\"hmac-sha1\", headers=\"x-date\", signature=\""
+                    + Signature + "\"";
+            System.out.println(sAuth);
+            try {
+                URL url = new URL(APIUrl);
+                if ("https".equalsIgnoreCase(url.getProtocol())) {
+                    SslUtils.ignoreSsl();
+                }
+                connection = (HttpURLConnection) url.openConnection();
+                //connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 6.2; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.87 Safari/537.36");
+                connection.setRequestMethod("GET");
+                connection.setRequestProperty("Authorization", sAuth);
+                connection.setRequestProperty("x-date", xdate);
+                connection.setRequestProperty("Accept-Encoding", "gzip");
+                connection.setRequestProperty("Content-Type", "application/json ; charset=utf-8");
+                connection.setDoInput(true);
 
-                 respond = connection.getResponseCode() + " " + connection.getResponseMessage();
-                 System.out.println("回傳狀態:" + respond);
-                 BufferedReader in;
+                respond = connection.getResponseCode() + " " + connection.getResponseMessage();
+                System.out.println("回傳狀態:" + respond);
+                BufferedReader in;
 
-                 //判斷來源是否為gzip
-                 if ("gzip".equals(connection.getContentEncoding())) {
-                     InputStreamReader reader = new InputStreamReader(new GZIPInputStream(connection.getInputStream()));
-                     in = new BufferedReader(reader);
-                 } else {
-                     InputStreamReader reader = new InputStreamReader(connection.getInputStream());
-                     in = new BufferedReader(reader);
-                 }
+                //判斷來源是否為gzip
+                if ("gzip".equals(connection.getContentEncoding())) {
+                    InputStreamReader reader = new InputStreamReader(new GZIPInputStream(connection.getInputStream()));
+                    in = new BufferedReader(reader);
+                } else {
+                    InputStreamReader reader = new InputStreamReader(connection.getInputStream());
+                    in = new BufferedReader(reader);
+                }
 
-                 // 返回的數據已經過解壓
-                 StringBuffer buffer = new StringBuffer();
-                 // 讀取回傳資料
-                 String line = "";
-                 while ((line = in.readLine()) != null) {
-                     System.out.println(line);
-                     buffer.append(line).append("\r\n");
-                 }
+                // 返回的數據已經過解壓
+                StringBuffer buffer = new StringBuffer();
+                // 讀取回傳資料
+                String line = "";
+                while ((line = in.readLine()) != null) {
+                    System.out.println(line);
+                    buffer.append(line).append("\r\n");
+                }
 
-                 in.close();
-                 System.out.println(buffer.toString());
+                in.close();
+                System.out.println(buffer.toString());
 
-             } catch (ProtocolException e) {
-                 e.printStackTrace();
-             }
+            } catch (ProtocolException e) {
+                e.printStackTrace();
+            }
 
-             catch (Exception e) {
-                 e.printStackTrace();
-             }
-         }
+            catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     @RequiresApi(api = Build.VERSION_CODES.N)
@@ -535,6 +553,76 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                 + output + "?" + parameters;
 
         return url;
+    }
+
+    class MyServer implements Runnable
+    {
+        ServerSocket ss;
+        Socket mysocket;
+        DataInputStream dis;
+        String message;
+        Handler handler = new Handler();
+
+        @Override
+        public void run() {
+            try {
+                ss = new ServerSocket(9700);
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        Toast.makeText(getApplicationContext(),"waiting for client: "+ message, Toast.LENGTH_SHORT).show();
+                    }
+                });
+                while(true){
+                    mysocket = ss.accept();
+                    dis = new DataInputStream(mysocket.getInputStream());
+                    message = dis.readUTF();
+                    handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(getApplicationContext(),"message received from client: "+ message, Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    class client extends AsyncTask<String,Void,Void> {
+        Socket s;
+        DataOutputStream dos;
+        PrintWriter pw;
+        @Override
+        protected Void doInBackground(String... voids) {
+            String message = voids[0];
+
+            try {
+                s = new Socket("172.20.10.2",1234);
+                pw = new PrintWriter(s.getOutputStream());
+                pw.write(message);
+                pw.flush();
+                pw.close();
+                s.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return null;
+        }
+    }
+
+    //我的IP
+    private String getMyIp(){
+        //新增一個WifiManager物件並取得WIFI_SERVICE
+        WifiManager wifi_service = (WifiManager)getApplicationContext().getSystemService(WIFI_SERVICE);
+        //取得wifi資訊
+        WifiInfo wifiInfo = wifi_service.getConnectionInfo();
+        //取得IP，但這會是一個詭異的數字，還要再自己換算才行
+        int ipAddress = wifiInfo.getIpAddress();
+        //利用位移運算和AND運算計算IP
+        String ip = String.format("%d.%d.%d.%d",(ipAddress & 0xff),(ipAddress >> 8 & 0xff),(ipAddress >> 16 & 0xff),(ipAddress >> 24 & 0xff));
+        return ip;
     }
 
 
@@ -666,7 +754,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
             }
 
             // Drawing polyline in the Google Map for the i-th route
-            mMap.addPolyline(lineOptions);
+            polyline = mMap.addPolyline(lineOptions);
         }
     }
 
@@ -750,11 +838,16 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                 && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             return;
         }
+
         location = locationManager.getLastKnownLocation(provider);
         if (location != null) {
             showLocation(googleMap,location);
         } else {
             String info = "無法獲得當前位置";
+            while(location  == null)
+            {
+                locationManager.requestLocationUpdates("gps", 60000, 1, locationListener);
+            }
             Toast.makeText(this, info, Toast.LENGTH_SHORT).show();
 
         }
@@ -780,12 +873,16 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                 String origin = String.valueOf((double) location.getLatitude()) + "," + String.valueOf((double)location.getLongitude());
                 String dest = address_dest.getText().toString();
                 String url = getDirectionsUrl(origin, dest);
-                mMap.clear();
+                polyline.remove();
                 DownloadTask downloadTask = new DownloadTask();
                 //Start downloading json data from Google Directions
                 //API
                 downloadTask.execute(url);
                 showLocation(mMap,location);
+            }
+            else{
+                if(polyline != null)
+                    polyline.remove();
             }
 
 
